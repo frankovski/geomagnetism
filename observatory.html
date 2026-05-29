@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Observator Surlari | Geomagnetism</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <style>
+    /* ─── Observatory layout ─── */
+    .obs-hero {
+      background: linear-gradient(135deg,#0a1628 0%,#112244 60%,#1a3a6e 100%);
+      color:#fff; padding:40px 20px 36px;
+      border-bottom:3px solid var(--primary);
+    }
+    html.dark .obs-hero { background:linear-gradient(135deg,#06101e 0%,#0a1a36 60%,#112b55 100%); }
+    .obs-hero-inner { max-width:1000px; margin:0 auto; }
+    .obs-hero-label { font-size:.75rem;font-weight:600;letter-spacing:1.8px;text-transform:uppercase;color:rgba(255,255,255,.55);margin-bottom:10px; }
+    .obs-hero-title { font-size:2rem;font-weight:700;line-height:1.2;margin-bottom:10px; }
+    .obs-hero-desc  { font-size:.95rem;color:rgba(255,255,255,.75);max-width:700px; }
+    .obs-badge-row  { display:flex;gap:16px;margin-top:22px;flex-wrap:wrap; }
+    .obs-badge      { background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:10px 18px;text-align:center; }
+    .obs-badge-val  { font-size:1rem;font-weight:700;color:#5ba4f7; }
+    .obs-badge-lbl  { font-size:.7rem;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.8px;margin-top:2px; }
+
+    /* ─── Sections ─── */
+    .obs-section { max-width:1000px;margin:36px auto;padding:0 20px; }
+    .obs-section + .obs-section { margin-top:28px; }
+    .sec-title { font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:10px; }
+    .sec-title::before { content:'';display:inline-block;width:4px;height:18px;background:var(--primary);border-radius:2px;flex-shrink:0; }
+
+    /* ─── Map ─── */
+    #obs-map { height:420px;border-radius:var(--radius);border:1px solid var(--border);box-shadow:var(--shadow-md);overflow:hidden; }
+
+    /* ─── Mini-cards (current conditions) ─── */
+    .mini-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:16px; }
+    @media(max-width:768px){ .mini-grid{ grid-template-columns:1fr 1fr; } }
+    @media(max-width:480px){ .mini-grid{ grid-template-columns:1fr; } }
+
+    .mini-card { background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden; }
+    .mini-card::before { content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--mc-color,var(--primary)); }
+    .mc-label { font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px; }
+    .mc-value { font-size:2rem;font-weight:700;color:var(--text);line-height:1; }
+    .mc-unit  { font-size:.8rem;color:var(--text-muted);margin-top:2px; }
+    .mc-badge { display:inline-block;margin-top:8px;padding:2px 10px;border-radius:20px;font-size:.72rem;font-weight:600; }
+
+    /* storm status colours */
+    .s-quiet    { background:#d4f5e2;color:#1a7a44; }
+    .s-unsettled{ background:#fef9c3;color:#7a5f00; }
+    .s-minor    { background:#fde8cc;color:#7a3a00; }
+    .s-moderate { background:#fdd5cc;color:#7a1a00; }
+    .s-strong   { background:#f5c0c0;color:#6a0000; }
+    .s-extreme  { background:#e00;color:#fff; }
+    html.dark .s-quiet    {background:#0d3320;color:#6ee7a7;}
+    html.dark .s-unsettled{background:#332b00;color:#f0d060;}
+    html.dark .s-minor    {background:#3a1500;color:#f0a060;}
+    html.dark .s-moderate {background:#3a0800;color:#f07060;}
+    html.dark .s-strong   {background:#2a0000;color:#f05050;}
+    html.dark .s-extreme  {background:#e00;color:#fff;}
+
+    /* Bz colour logic applied via JS */
+    .bz-pos { color:#27ae60; }
+    .bz-neg { color:#e74c3c; }
+
+    /* ─── Charts ─── */
+    .chart-card { background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow-sm); }
+    .chart-card + .chart-card { margin-top:16px; }
+    .chart-title { font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:14px; }
+    .chart-canvas-wrap { position:relative;height:160px; }
+
+    /* Kp bar chart */
+    .kp-bars { display:flex;align-items:flex-end;gap:3px;height:120px;margin-top:8px; }
+    .kp-bar-wrap { flex:1;display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end; }
+    .kp-bar  { width:100%;border-radius:3px 3px 0 0;min-height:2px;transition:height .4s; }
+    .kp-bar-lbl { font-size:.55rem;color:var(--text-muted);margin-top:3px;white-space:nowrap; }
+    .kp-bar-type-predicted { opacity:.5; }
+    .kp-legend { display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:.72rem;color:var(--text-muted); }
+    .kp-legend span::before { content:'■ ';font-size:.8rem; }
+
+    /* Dst / solar-wind SVG line chart */
+    .line-chart-svg { width:100%;height:140px;display:block; }
+
+    /* ─── Solar wind panel ─── */
+    .sw-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:12px; }
+    @media(max-width:600px){ .sw-grid{ grid-template-columns:1fr 1fr; } }
+    .sw-cell { background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;text-align:center; }
+    .sw-val  { font-size:1.5rem;font-weight:700;color:var(--text); }
+    .sw-lbl  { font-size:.68rem;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-top:4px; }
+
+    /* ─── Alerts ─── */
+    .alert-list { display:flex;flex-direction:column;gap:10px; }
+    .alert-item { background:var(--card-bg);border:1px solid var(--border);border-left:4px solid var(--al-color,var(--primary));border-radius:var(--radius);padding:14px 16px; }
+    .alert-item.sev-watch  { --al-color:#e67e22; }
+    .alert-item.sev-warning{ --al-color:#e74c3c; }
+    .alert-item.sev-summary{ --al-color:#3498db; }
+    .alert-item.sev-alert  { --al-color:#f39c12; }
+    .alert-hdr { font-size:.72rem;font-weight:600;color:var(--text-muted);margin-bottom:4px; }
+    .alert-body{ font-size:.82rem;color:var(--text);white-space:pre-wrap;font-family:monospace;max-height:120px;overflow:hidden; }
+    .alert-body.expanded { max-height:none; }
+    .alert-toggle { font-size:.72rem;color:var(--primary);cursor:pointer;margin-top:4px;display:inline-block; }
+
+    /* ─── Ext links ─── */
+    .ext-links { display:flex;flex-wrap:wrap;gap:10px;margin-top:8px; }
+    .ext-link  { display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:var(--primary-light);border:1px solid var(--border);border-radius:6px;font-size:.82rem;font-weight:500;color:var(--primary);text-decoration:none;transition:background var(--transition); }
+    .ext-link:hover { background:var(--primary);color:#fff;text-decoration:none; }
+
+    /* ─── Loading / error ─── */
+    .loading { color:var(--text-muted);font-size:.82rem;display:flex;align-items:center;gap:8px;padding:8px 0; }
+    .spinner { width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0; }
+    @keyframes spin{to{transform:rotate(360deg);}}
+    .err-msg { font-size:.78rem;color:var(--text-muted);padding:6px 0; }
+
+    /* ─── Refresh bar ─── */
+    .refresh-bar { max-width:1000px;margin:0 auto 8px;padding:0 20px;display:flex;justify-content:flex-end;align-items:center;gap:12px;font-size:.75rem;color:var(--text-muted); }
+    .refresh-btn { background:var(--primary-light);border:1px solid var(--border);border-radius:6px;padding:4px 12px;font-size:.75rem;color:var(--primary);cursor:pointer;font-weight:600; }
+    .refresh-btn:hover { background:var(--primary);color:#fff; }
+
+    @media(max-width:768px){ .obs-hero-title{font-size:1.5rem;} }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <div class="site-title"><a href="index.html">Geomagnetism</a></div>
+    <div class="contract-info"><strong>Contract nr. 34/16.01.2023</strong></div>
+    <div class="project-title">Proiectul: PN 23 39 04 01 — Geomagnetismul, instrument modern în prognoza vremii spațiale și în reacția rapidă la hazardele naturale asociate pentru protecția infrastructurilor critice și securitatea traficului aerian național</div>
+    <nav class="main-nav">
+      <ul>
+        <li><a href="2023-1.html">2023/1</a></li>
+        <li><a href="2023-2.html">2023/2</a></li>
+        <li><a href="2024-1.html">2024/1</a></li>
+        <li><a href="2024-2.html">2024/2</a></li>
+        <li><a href="2025-1.html">2025/1</a></li>
+        <li><a href="2025-2.html">2025/2</a></li>
+        <li><a href="2026-1.html">2026/1</a></li>
+        <li><a href="2026-2.html">2026/2</a></li>
+        <li><a href="index.html">Publicații</a></li>
+        <li><a href="observatory.html" class="active">Observator</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<!-- Hero -->
+<div class="obs-hero">
+  <div class="obs-hero-inner">
+    <div class="obs-hero-label">Institutul Geologic al României</div>
+    <h1 class="obs-hero-title">Observatorul Geomagnetic Surlari</h1>
+    <p class="obs-hero-desc">Monitorizare continuă a câmpului geomagnetic. Date în timp real de la NOAA SWPC — actualizare automată la 5 minute.</p>
+    <div class="obs-badge-row">
+      <div class="obs-badge"><div class="obs-badge-val">SUA</div><div class="obs-badge-lbl">Cod IAGA</div></div>
+      <div class="obs-badge"><div class="obs-badge-val">44.68° N</div><div class="obs-badge-lbl">Latitudine</div></div>
+      <div class="obs-badge"><div class="obs-badge-val">26.25° E</div><div class="obs-badge-lbl">Longitudine</div></div>
+      <div class="obs-badge"><div class="obs-badge-val">83 m</div><div class="obs-badge-lbl">Altitudine</div></div>
+      <div class="obs-badge"><div class="obs-badge-val">INTERMAGNET</div><div class="obs-badge-lbl">Rețea</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Refresh bar -->
+<div class="refresh-bar">
+  <span id="last-refresh">–</span>
+  <button class="refresh-btn" onclick="loadAll()">↻ Actualizează</button>
+</div>
+
+<!-- Map -->
+<div class="obs-section">
+  <div class="sec-title">Localizare Stație — Hartă ArcGIS / OpenStreetMap</div>
+  <div id="obs-map"></div>
+</div>
+
+<!-- Current Conditions -->
+<div class="obs-section">
+  <div class="sec-title">Condiții Curente</div>
+  <div class="mini-grid">
+
+    <div class="mini-card" style="--mc-color:#5ba4f7">
+      <div class="mc-label">Indicele Kp Planetar</div>
+      <div class="mc-value" id="cc-kp">–</div>
+      <div class="mc-unit">Scala 0–9 · interval 3h</div>
+      <div class="mc-badge s-quiet" id="cc-kp-badge">–</div>
+    </div>
+
+    <div class="mini-card" style="--mc-color:#e67e22">
+      <div class="mc-label">Indicele Dst (Kyoto)</div>
+      <div class="mc-value" id="cc-dst">–</div>
+      <div class="mc-unit">nT · orar</div>
+      <div class="mc-badge s-quiet" id="cc-dst-badge">–</div>
+    </div>
+
+    <div class="mini-card" style="--mc-color:#e74c3c">
+      <div class="mc-label">Scala Furtunilor NOAA</div>
+      <div class="mc-value" id="cc-gscale">–</div>
+      <div class="mc-unit">Geomagnetic (G0–G5)</div>
+      <div class="mc-badge s-quiet" id="cc-gscale-badge">–</div>
+    </div>
+
+    <div class="mini-card" style="--mc-color:#9b59b6">
+      <div class="mc-label">Vânt Solar Bz (DSCOVR)</div>
+      <div class="mc-value" id="cc-bz">–</div>
+      <div class="mc-unit">nT · componenta N-S</div>
+      <div class="mc-badge s-quiet" id="cc-bz-badge">–</div>
+    </div>
+
+    <div class="mini-card" style="--mc-color:#f39c12">
+      <div class="mc-label">Flux X GOES (flare solar)</div>
+      <div class="mc-value" id="cc-xray">–</div>
+      <div class="mc-unit">Clasă A/B/C/M/X</div>
+      <div class="mc-badge s-quiet" id="cc-xray-badge">–</div>
+    </div>
+
+    <div class="mini-card" style="--mc-color:#27ae60">
+      <div class="mc-label">Probabilitate Auroră (45°N)</div>
+      <div class="mc-value" id="cc-aurora">–</div>
+      <div class="mc-unit">% · latitudine România</div>
+      <div class="mc-badge s-quiet" id="cc-aurora-badge">–</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Kp chart + forecast -->
+<div class="obs-section">
+  <div class="sec-title">Indicele Kp — Observat &amp; Prognoză (3 zile)</div>
+  <div class="chart-card">
+    <div class="chart-title">Fiecare bară = interval 3h · Transparent = prognozat</div>
+    <div id="kp-chart-wrap">
+      <div class="loading" id="kp-chart-loading"><div class="spinner"></div>Se încarcă...</div>
+    </div>
+    <div class="kp-legend">
+      <span style="color:#27ae60">Calm (Kp&lt;3)</span>
+      <span style="color:#f39c12">Nesigur (Kp 3–4)</span>
+      <span style="color:#e67e22">Furtună minoră G1 (Kp 5)</span>
+      <span style="color:#e74c3c">Furtună moderată G2+ (Kp≥6)</span>
+    </div>
+  </div>
+</div>
+
+<!-- Dst chart -->
+<div class="obs-section">
+  <div class="sec-title">Indicele Dst — Ultimele 48 de ore</div>
+  <div class="chart-card">
+    <div class="chart-title">Valori orare în nT · Linie roșie = prag furtună moderată (−50 nT)</div>
+    <div id="dst-chart-wrap">
+      <div class="loading" id="dst-chart-loading"><div class="spinner"></div>Se încarcă...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Solar wind -->
+<div class="obs-section">
+  <div class="sec-title">Vânt Solar în Timp Real (DSCOVR / ACE)</div>
+  <div class="sw-grid">
+    <div class="sw-cell">
+      <div class="sw-val" id="sw-bz">–</div>
+      <div class="sw-lbl">Bz (nT)</div>
+    </div>
+    <div class="sw-cell">
+      <div class="sw-val" id="sw-bt">–</div>
+      <div class="sw-lbl">Bt — câmp total (nT)</div>
+    </div>
+    <div class="sw-cell">
+      <div class="sw-val" id="sw-speed">–</div>
+      <div class="sw-lbl">Viteză (km/s)</div>
+    </div>
+    <div class="sw-cell">
+      <div class="sw-val" id="sw-density">–</div>
+      <div class="sw-lbl">Densitate (p/cm³)</div>
+    </div>
+  </div>
+  <div class="chart-card" style="margin-top:14px;">
+    <div class="chart-title">Bz GSM — Ultimele 6h (negativ = favorabil pentru furtuni)</div>
+    <div id="bz-chart-wrap">
+      <div class="loading" id="bz-chart-loading"><div class="spinner"></div>Se încarcă...</div>
+    </div>
+  </div>
+</div>
+
+<!-- X-ray flux chart -->
+<div class="obs-section">
+  <div class="sec-title">Flux X Solar — GOES (ultimele 6h)</div>
+  <div class="chart-card">
+    <div class="chart-title">Scala logaritmică W/m² · Prag M: 1×10⁻⁵ · Prag X: 1×10⁻⁴</div>
+    <div id="xray-chart-wrap">
+      <div class="loading" id="xray-chart-loading"><div class="spinner"></div>Se încarcă...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Space weather alerts -->
+<div class="obs-section">
+  <div class="sec-title">Alerte Vreme Spațială NOAA (ultimele 24h)</div>
+  <div id="alerts-wrap">
+    <div class="loading" id="alerts-loading"><div class="spinner"></div>Se încarcă alertele...</div>
+  </div>
+</div>
+
+<!-- Links -->
+<div class="obs-section">
+  <div class="sec-title">Surse de Date &amp; Resurse</div>
+  <div class="ext-links">
+    <a href="https://www.swpc.noaa.gov/products/planetary-k-index" target="_blank" rel="noopener" class="ext-link">↗ NOAA SWPC — Kp Index</a>
+    <a href="https://www.swpc.noaa.gov/products/real-time-solar-wind" target="_blank" rel="noopener" class="ext-link">↗ NOAA SWPC — Vânt Solar</a>
+    <a href="https://www.swpc.noaa.gov/products/goes-x-ray-flux" target="_blank" rel="noopener" class="ext-link">↗ NOAA GOES — Flux X</a>
+    <a href="https://wdc.kugi.kyoto-u.ac.jp/dst_realtime/index.html" target="_blank" rel="noopener" class="ext-link">↗ Kyoto WDC — Dst</a>
+    <a href="https://intermagnet.github.io/" target="_blank" rel="noopener" class="ext-link">↗ INTERMAGNET</a>
+    <a href="https://kp.gfz-potsdam.de/" target="_blank" rel="noopener" class="ext-link">↗ GFZ Potsdam — Kp</a>
+    <a href="https://www.swpc.noaa.gov/communities/aurora-dashboard" target="_blank" rel="noopener" class="ext-link">↗ NOAA Aurora Dashboard</a>
+    <a href="https://www.ngdc.noaa.gov/geomag/" target="_blank" rel="noopener" class="ext-link">↗ NOAA NCEI Geomagnetism</a>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <p>Contact: <strong>Institutul Geologic al României</strong></p>
+    <p>Telefon: —</p>
+    <div class="social-links">
+      <a href="http://www.facebook.com/" target="_blank" rel="noopener">
+        <img src="https://static.wixstatic.com/media/4057345bcf57474b96976284050c00df.png/v1/fill/w_30,h_30,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/4057345bcf57474b96976284050c00df.png" alt="Facebook" />
+      </a>
+      <a href="http://www.twitter.com/" target="_blank" rel="noopener">
+        <img src="https://static.wixstatic.com/media/870f97661ed14a5bb2d96ecbddec0aed.png/v1/fill/w_30,h_30,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/870f97661ed14a5bb2d96ecbddec0aed.png" alt="Twitter" />
+      </a>
+      <a href="http://instagram.com/" target="_blank" rel="noopener">
+        <img src="https://static.wixstatic.com/media/e1aa082f7c0747168d9cf43e77046142.png/v1/fill/w_30,h_30,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/e1aa082f7c0747168d9cf43e77046142.png" alt="Instagram" />
+      </a>
+    </div>
+    <div class="copyright">© 2025 Geomagnetism — Institutul Geologic al României</div>
+  </div>
+</footer>
+
+<!-- Leaflet -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════════
+   MAP
+═══════════════════════════════════════════════ */
+(function(){
+  var map = L.map('obs-map',{center:[44.6797,26.2517],zoom:10});
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{
+    attribution:'Tiles &copy; Esri',maxZoom:18
+  }).addTo(map);
+
+  var icon = L.divIcon({
+    html:'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="48" viewBox="0 0 36 48"><path d="M18 0C8.06 0 0 8.06 0 18c0 13.5 18 30 18 30s18-16.5 18-30C36 8.06 27.94 0 18 0z" fill="#1a5fa8"/><circle cx="18" cy="18" r="8" fill="white"/><circle cx="18" cy="18" r="4" fill="#1a5fa8"/></svg>',
+    iconSize:[36,48],iconAnchor:[18,48],popupAnchor:[0,-48],className:''
+  });
+  L.marker([44.6797,26.2517],{icon:icon}).addTo(map)
+    .bindPopup('<strong style="color:#1a5fa8">Observatorul Surlari</strong><br>Cod IAGA: <b>SUA</b><br>44.6797°N, 26.2517°E · 83m · INTERMAGNET')
+    .openPopup();
+})();
+
+/* ═══════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════ */
+var APIS = {
+  kp:       'https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json',
+  dst:      'https://services.swpc.noaa.gov/products/kyoto-dst.json',
+  scales:   'https://services.swpc.noaa.gov/products/noaa-scales.json',
+  mag:      'https://services.swpc.noaa.gov/products/solar-wind/mag-1-hour.json',
+  plasma:   'https://services.swpc.noaa.gov/products/solar-wind/plasma-1-hour.json',
+  xray:     'https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json',
+  alerts:   'https://services.swpc.noaa.gov/products/alerts.json',
+  aurora:   'https://services.swpc.noaa.gov/json/ovation_aurora_latest.json'
+};
+
+function fetchJSON(url){ return fetch(url).then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); }); }
+
+function kpColor(kp){
+  if(kp<3)  return '#27ae60';
+  if(kp<4)  return '#f0c040';
+  if(kp<5)  return '#f39c12';
+  if(kp<6)  return '#e67e22';
+  if(kp<7)  return '#e74c3c';
+  return '#8e1a1a';
+}
+function kpBadge(kp){
+  if(kp<3)  return {cls:'s-quiet',    lbl:'Calm'};
+  if(kp<4)  return {cls:'s-unsettled',lbl:'Nesigur'};
+  if(kp<5)  return {cls:'s-minor',    lbl:'Furtună Minoră G1'};
+  if(kp<6)  return {cls:'s-moderate', lbl:'Furtună Moderată G2'};
+  if(kp<7)  return {cls:'s-strong',   lbl:'Furtună Puternică G3'};
+  if(kp<8)  return {cls:'s-strong',   lbl:'Furtună Severă G4'};
+  return              {cls:'s-extreme',  lbl:'Furtună Extremă G5'};
+}
+function dstBadge(dst){
+  if(dst>-20)  return {cls:'s-quiet',    lbl:'Calm'};
+  if(dst>-50)  return {cls:'s-unsettled',lbl:'Perturbație moderată'};
+  if(dst>-100) return {cls:'s-minor',    lbl:'Furtună intensă'};
+  return               {cls:'s-strong',   lbl:'Furtună extremă'};
+}
+function xrayClass(flux){
+  if(flux>=1e-4) return {cls:'X', num:(flux/1e-4).toFixed(1), badge:'s-extreme'};
+  if(flux>=1e-5) return {cls:'M', num:(flux/1e-5).toFixed(1), badge:'s-strong'};
+  if(flux>=1e-6) return {cls:'C', num:(flux/1e-6).toFixed(1), badge:'s-minor'};
+  if(flux>=1e-7) return {cls:'B', num:(flux/1e-7).toFixed(1), badge:'s-quiet'};
+  return               {cls:'A', num:(flux/1e-8).toFixed(1), badge:'s-quiet'};
+}
+function setEl(id,v){ var e=document.getElementById(id); if(e) e.textContent=v; }
+function setAttr(id,attr,v){ var e=document.getElementById(id); if(e) e.setAttribute(attr,v); }
+function setBadge(id,info){ var e=document.getElementById(id); if(!e) return; e.textContent=info.lbl; e.className='mc-badge '+info.cls; }
+function hide(id){ var e=document.getElementById(id); if(e) e.style.display='none'; }
+function show(id){ var e=document.getElementById(id); if(e) e.style.display=''; }
+
+/* SVG line chart */
+function svgLineChart(container, data, opts){
+  opts = opts||{};
+  var W=900, H=140, PL=48, PR=10, PT=10, PB=24;
+  var chartW=W-PL-PR, chartH=H-PT-PB;
+  var vals = data.map(function(d){return d.y;});
+  var min = opts.min!==undefined ? opts.min : Math.min.apply(null,vals);
+  var max = opts.max!==undefined ? opts.max : Math.max.apply(null,vals);
+  if(min===max){min-=1;max+=1;}
+  var range=max-min;
+
+  function px(i){ return PL + (i/(data.length-1||1))*chartW; }
+  function py(v){ return PT + (1-(v-min)/range)*chartH; }
+
+  var path='M'+data.map(function(d,i){return px(i)+','+py(d.y);}).join('L');
+  var area=path+'L'+px(data.length-1)+','+(PT+chartH)+'L'+PL+','+(PT+chartH)+'Z';
+
+  /* y-axis labels */
+  var ySteps=4;
+  var yLabels='';
+  for(var i=0;i<=ySteps;i++){
+    var v=min+(range/ySteps)*i;
+    var y=py(v);
+    yLabels+='<line x1="'+PL+'" y1="'+y+'" x2="'+(W-PR)+'" y2="'+y+'" stroke="var(--border)" stroke-width="1"/>';
+    yLabels+='<text x="'+(PL-4)+'" y="'+(y+4)+'" text-anchor="end" font-size="10" fill="var(--text-muted)">'+v.toFixed(0)+'</text>';
+  }
+
+  /* zero line */
+  var zeroLine='';
+  if(min<0 && max>0){
+    var zy=py(0);
+    zeroLine='<line x1="'+PL+'" y1="'+zy+'" x2="'+(W-PR)+'" y2="'+zy+'" stroke="'+(opts.zeroColor||'#e74c3c')+'" stroke-width="1.5" stroke-dasharray="4,3"/>';
+  }
+
+  /* threshold line */
+  var threshLine='';
+  if(opts.threshold!==undefined && opts.threshold>min && opts.threshold<max){
+    var ty=py(opts.threshold);
+    threshLine='<line x1="'+PL+'" y1="'+ty+'" x2="'+(W-PR)+'" y2="'+ty+'" stroke="'+(opts.threshColor||'#e74c3c')+'" stroke-width="1.5" stroke-dasharray="5,4"/>';
+  }
+
+  /* x labels (every N points) */
+  var xLabels='';
+  var step=Math.max(1,Math.floor(data.length/8));
+  for(var j=0;j<data.length;j+=step){
+    var lx=px(j);
+    xLabels+='<text x="'+lx+'" y="'+(H-4)+'" text-anchor="middle" font-size="9" fill="var(--text-muted)">'+data[j].label+'</text>';
+  }
+
+  var color=opts.color||'#1a5fa8';
+  var fillId='fill'+Math.random().toString(36).slice(2);
+
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" class="line-chart-svg">'
+    +'<defs><linearGradient id="'+fillId+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+color+'" stop-opacity=".25"/><stop offset="100%" stop-color="'+color+'" stop-opacity="0"/></linearGradient></defs>'
+    +yLabels+zeroLine+threshLine+xLabels
+    +'<path d="'+area+'" fill="url(#'+fillId+')" />'
+    +'<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linejoin="round"/>'
+    +'</svg>';
+
+  container.innerHTML=svg;
+}
+
+function timeLabel(tag){
+  try{
+    var s=tag.indexOf('T')>=0?tag:tag.replace(' ','T');
+    if(!/Z$|[+-]\d\d:\d\d$/.test(s)) s+='Z';
+    var d=new Date(s);
+    return d.getUTCHours().toString().padStart(2,'0')+':'+d.getUTCMinutes().toString().padStart(2,'0');
+  }catch(e){return '';}
+}
+function dayLabel(tag){
+  try{
+    var d=new Date((tag.indexOf('T')>=0?tag:tag.replace(' ','T'))+'Z');
+    var months=['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'];
+    return d.getUTCDate()+' '+months[d.getUTCMonth()];
+  }catch(e){return '';}
+}
+
+/* ═══════════════════════════════════════════════
+   KP + FORECAST
+═══════════════════════════════════════════════ */
+function loadKp(){
+  hide('kp-chart-loading');
+  return fetchJSON(APIS.kp).then(function(data){
+    /* last 8 observed + up to 8 predicted = 24h history + 24h forecast */
+    var now=Date.now();
+    var observed=[],predicted=[];
+    data.forEach(function(row){
+      var t=new Date((row.time_tag.indexOf('T')>=0?row.time_tag:row.time_tag.replace(' ','T'))+'Z').getTime();
+      if(t<=now+300000){ // not more than 5 min in future = observed/estimated
+        if(row.observed==='predicted') predicted.push(row);
+        else observed.push(row);
+      } else {
+        predicted.push(row);
+      }
+    });
+    observed=observed.slice(-16); // last 48h
+    predicted=predicted.slice(0,8); // next 24h
+
+    /* current Kp */
+    var last=observed[observed.length-1]||data[data.length-1];
+    var kpVal=parseFloat(last.kp);
+    setEl('cc-kp', kpVal.toFixed(2));
+    setBadge('cc-kp-badge', kpBadge(kpVal));
+
+    /* build bar chart */
+    var wrap=document.getElementById('kp-chart-wrap');
+    hide('kp-chart-loading');
+    var barsEl=document.createElement('div');
+    barsEl.className='kp-bars';
+
+    function makeBar(row, isPred){
+      var kp=parseFloat(row.kp);
+      var pct=Math.min(100,(kp/9)*100);
+      var wrap2=document.createElement('div');
+      wrap2.className='kp-bar-wrap';
+      var bar=document.createElement('div');
+      bar.className='kp-bar'+(isPred?' kp-bar-type-predicted':'');
+      bar.style.height=Math.max(pct,2)+'%';
+      bar.style.background=kpColor(kp);
+      bar.title='Kp='+kp.toFixed(2)+(isPred?' (prognozat)':'')+' · '+row.time_tag;
+      var lbl=document.createElement('div');
+      lbl.className='kp-bar-lbl';
+      lbl.textContent=timeLabel(row.time_tag);
+      wrap2.appendChild(bar); wrap2.appendChild(lbl);
+      return wrap2;
+    }
+    observed.forEach(function(r){ barsEl.appendChild(makeBar(r,false)); });
+    predicted.forEach(function(r){ barsEl.appendChild(makeBar(r,true)); });
+    wrap.innerHTML=''; wrap.appendChild(barsEl);
+  }).catch(function(){ document.getElementById('kp-chart-wrap').innerHTML='<p class="err-msg">⚠ Date indisponibile — <a href="https://www.swpc.noaa.gov" target="_blank">NOAA SWPC</a></p>'; });
+}
+
+/* ═══════════════════════════════════════════════
+   DST
+═══════════════════════════════════════════════ */
+function loadDst(){
+  return fetchJSON(APIS.dst).then(function(data){
+    var last48=data.slice(-48);
+    var latest=last48[last48.length-1];
+    var dstVal=latest.dst;
+    setEl('cc-dst', dstVal>0?'+'+dstVal:dstVal);
+    setBadge('cc-dst-badge', dstBadge(dstVal));
+
+    var pts=last48.map(function(d){ return {y:d.dst, label:timeLabel(d.time_tag)}; });
+    var wrap=document.getElementById('dst-chart-wrap');
+    hide('dst-chart-loading');
+    svgLineChart(wrap, pts, {color:'#e67e22', threshold:-50, threshColor:'#e74c3c', zeroColor:'#27ae60'});
+  }).catch(function(){ document.getElementById('dst-chart-wrap').innerHTML='<p class="err-msg">⚠ Date indisponibile</p>'; hide('dst-chart-loading'); });
+}
+
+/* ═══════════════════════════════════════════════
+   NOAA SCALES
+═══════════════════════════════════════════════ */
+function loadScales(){
+  return fetchJSON(APIS.scales).then(function(data){
+    var cur=data['0'];
+    if(!cur) return;
+    var g=cur.G;
+    var scale=parseInt(g.Scale)||0;
+    setEl('cc-gscale','G'+scale);
+    var badges=['s-quiet','s-quiet','s-minor','s-moderate','s-strong','s-extreme'];
+    var lbls=['G0 — Nicio furtună','G1 — Minoră','G2 — Moderată','G3 — Puternică','G4 — Severă','G5 — Extremă'];
+    var badge=document.getElementById('cc-gscale-badge');
+    if(badge){ badge.className='mc-badge '+(badges[scale]||'s-quiet'); badge.textContent=lbls[scale]||'–'; }
+  }).catch(function(){});
+}
+
+/* ═══════════════════════════════════════════════
+   SOLAR WIND (MAG + PLASMA)
+═══════════════════════════════════════════════ */
+function loadSolarWind(){
+  return Promise.all([fetchJSON(APIS.mag), fetchJSON(APIS.plasma)]).then(function(results){
+    var mag=results[0], plasma=results[1];
+
+    /* mag format: [[headers], [vals], ...] */
+    var headers=mag[0];
+    var bzIdx=headers.indexOf('bz_gsm'), btIdx=headers.indexOf('bt');
+    var lastMag=mag[mag.length-1];
+    var bz=parseFloat(lastMag[bzIdx]);
+    var bt=parseFloat(lastMag[btIdx]);
+
+    setEl('cc-bz', isNaN(bz)?'–':(bz>0?'+':'')+bz.toFixed(1));
+    setEl('sw-bz',  isNaN(bz)?'–':(bz>0?'+':'')+bz.toFixed(1));
+    setEl('sw-bt',  isNaN(bt)?'–':bt.toFixed(1));
+    var bzBadge=document.getElementById('cc-bz-badge');
+    if(bzBadge){
+      if(bz>0){ bzBadge.className='mc-badge s-quiet'; bzBadge.textContent='Bz Nord (favorabil)'; }
+      else if(bz>-10){ bzBadge.className='mc-badge s-unsettled'; bzBadge.textContent='Bz Sud moderat'; }
+      else { bzBadge.className='mc-badge s-minor'; bzBadge.textContent='Bz Sud puternic'; }
+    }
+
+    /* plasma: [[headers],[vals]...] */
+    var ph=plasma[0];
+    var speedIdx=ph.indexOf('speed'), densityIdx=ph.indexOf('density');
+    var lastP=plasma[plasma.length-1];
+    setEl('sw-speed',   parseFloat(lastP[speedIdx]).toFixed(0));
+    setEl('sw-density', parseFloat(lastP[densityIdx]).toFixed(1));
+
+    /* Bz line chart */
+    var bzData=mag.slice(1).slice(-72).map(function(row){
+      return {y:parseFloat(row[bzIdx]), label:timeLabel(row[0])};
+    });
+    var bzWrap=document.getElementById('bz-chart-wrap');
+    hide('bz-chart-loading');
+    svgLineChart(bzWrap, bzData, {color:'#9b59b6', min:-30, max:30, zeroColor:'#e74c3c'});
+  }).catch(function(){ hide('bz-chart-loading'); document.getElementById('bz-chart-wrap').innerHTML='<p class="err-msg">⚠ Date vânt solar indisponibile</p>'; });
+}
+
+/* ═══════════════════════════════════════════════
+   GOES X-RAY
+═══════════════════════════════════════════════ */
+function loadXray(){
+  return fetchJSON(APIS.xray).then(function(data){
+    /* filter to long-wave channel (1.0-8.0 Å) */
+    var lw=data.filter(function(d){ return d.energy==='0.1-0.8nm'||d.energy==='1.0-8.0A'||!d.energy; });
+    if(!lw.length) lw=data;
+    var latest=lw[lw.length-1];
+    var flux=parseFloat(latest.flux||latest.observed_flux||0);
+    var cls=xrayClass(flux);
+    setEl('cc-xray', cls.cls+cls.num);
+    var badge=document.getElementById('cc-xray-badge');
+    if(badge){ badge.className='mc-badge '+cls.badge; badge.textContent='Clasa '+cls.cls; }
+
+    /* log-scale chart */
+    var pts=lw.slice(-120).map(function(d){
+      var f=parseFloat(d.flux||d.observed_flux||1e-9);
+      var logv=Math.log10(Math.max(f,1e-9));
+      return {y:logv, label:timeLabel(d.time_tag)};
+    });
+    var wrap=document.getElementById('xray-chart-wrap');
+    hide('xray-chart-loading');
+    svgLineChart(wrap, pts, {color:'#f39c12', min:-9, max:-3,
+      threshold:Math.log10(1e-5), threshColor:'#e74c3c'});
+  }).catch(function(){ hide('xray-chart-loading'); document.getElementById('xray-chart-wrap').innerHTML='<p class="err-msg">⚠ Date GOES indisponibile</p>'; });
+}
+
+/* ═══════════════════════════════════════════════
+   ALERTS
+═══════════════════════════════════════════════ */
+function loadAlerts(){
+  return fetchJSON(APIS.alerts).then(function(data){
+    hide('alerts-loading');
+    var wrap=document.getElementById('alerts-wrap');
+
+    /* filter last 24h */
+    var cutoff=Date.now()-86400000;
+    var recent=data.filter(function(a){
+      try{ return new Date(a.issue_datetime.replace(' ','T')+'Z').getTime()>cutoff; }
+      catch(e){ return true; }
+    });
+
+    if(!recent.length){
+      wrap.innerHTML='<p style="color:var(--text-muted);font-size:.85rem;">✓ Nicio alertă activă în ultimele 24 de ore.</p>';
+      return;
+    }
+
+    var list=document.createElement('div');
+    list.className='alert-list';
+    recent.slice(0,10).forEach(function(a){
+      var cls='';
+      var pid=(a.product_id||'').toLowerCase();
+      if(pid.indexOf('warning')>=0) cls='sev-warning';
+      else if(pid.indexOf('watch')>=0) cls='sev-watch';
+      else if(pid.indexOf('summary')>=0) cls='sev-summary';
+      else cls='sev-alert';
+
+      var item=document.createElement('div');
+      item.className='alert-item '+cls;
+
+      var hdr=document.createElement('div');
+      hdr.className='alert-hdr';
+      hdr.textContent=(a.product_id||'')+'  ·  '+(a.issue_datetime||'');
+
+      var body=document.createElement('div');
+      body.className='alert-body';
+      var msg=(a.message||'').trim().slice(0,500);
+      body.textContent=msg;
+
+      var toggle=document.createElement('span');
+      toggle.className='alert-toggle';
+      toggle.textContent='▼ Extinde';
+      toggle.onclick=function(){
+        body.classList.toggle('expanded');
+        toggle.textContent=body.classList.contains('expanded')?'▲ Restrânge':'▼ Extinde';
+      };
+
+      item.appendChild(hdr); item.appendChild(body);
+      if((a.message||'').length>500) item.appendChild(toggle);
+      list.appendChild(item);
+    });
+    wrap.innerHTML=''; wrap.appendChild(list);
+  }).catch(function(){ hide('alerts-loading'); document.getElementById('alerts-wrap').innerHTML='<p class="err-msg">⚠ Alerte indisponibile</p>'; });
+}
+
+/* ═══════════════════════════════════════════════
+   AURORA (Ovation model)
+═══════════════════════════════════════════════ */
+function loadAurora(){
+  return fetchJSON(APIS.aurora).then(function(data){
+    /* Find probability at ~45°N (Romania) */
+    var TARGET_LAT=45;
+    var forecast=data.coordinates||data.Forecast||[];
+    var best=0;
+    forecast.forEach(function(pt){
+      /* Ovation format: [lon, lat, aurora] */
+      var lat=pt[1], prob=pt[2];
+      if(Math.abs(lat-TARGET_LAT)<2){ if(prob>best) best=prob; }
+    });
+    setEl('cc-aurora', best+'%');
+    var badge=document.getElementById('cc-aurora-badge');
+    if(badge){
+      if(best<10){ badge.className='mc-badge s-quiet'; badge.textContent='Vizibilitate improbabilă'; }
+      else if(best<30){ badge.className='mc-badge s-unsettled'; badge.textContent='Vizibilitate scăzută'; }
+      else if(best<60){ badge.className='mc-badge s-minor'; badge.textContent='Posibilă la orizont'; }
+      else { badge.className='mc-badge s-moderate'; badge.textContent='Vizibilă cu ochiul liber'; }
+    }
+  }).catch(function(){ setEl('cc-aurora','–'); });
+}
+
+/* ═══════════════════════════════════════════════
+   LOAD ALL
+═══════════════════════════════════════════════ */
+function loadAll(){
+  Promise.allSettled([loadKp(), loadDst(), loadScales(), loadSolarWind(), loadXray(), loadAlerts(), loadAurora()])
+    .then(function(){
+      var now=new Date();
+      setEl('last-refresh','Actualizat: '+now.toLocaleTimeString('ro-RO')+' UTC+'+(-now.getTimezoneOffset()/60));
+    });
+}
+
+/* Initial load + auto-refresh every 5 minutes */
+loadAll();
+setInterval(loadAll, 300000);
+</script>
+
+<script src="scripts.js"></script>
+</body>
+</html>
